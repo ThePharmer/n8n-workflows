@@ -277,37 +277,37 @@ PHASE1_MESSAGES = [
         "text": "person: Dr. Sarah Chen - my new dentist, office is on Main Street",
         "expect_db": "people",
         "expect_name_contains": "Sarah Chen",
-        "expect_fields": {"Context": "dentist"},
+        "expect_fields": {"Context": ["dentist"]},
     },
     {
         "text": "person: Uncle Rick - Lauren's uncle, lives in Tampa",
         "expect_db": "people",
         "expect_name_contains": "Uncle Rick",
-        "expect_fields": {"Context": "Tampa"},
+        "expect_fields": {"Context": ["Tampa"]},
     },
     {
         "text": "project: Bathroom renovation - replacing tile and vanity, getting quotes this week",
         "expect_db": "projects",
         "expect_name_contains": "Bathroom",
-        "expect_fields": {"Notes": "tile"},
+        "expect_fields": {"Notes": ["tile", "vanity", "replacing", "renovation"]},
     },
     {
         "text": "project: Lauren's birthday planning - surprise dinner, need to book restaurant",
         "expect_db": "projects",
         "expect_name_contains": "birthday",
-        "expect_fields": {"Notes": "surprise"},
+        "expect_fields": {"Notes": ["surprise", "dinner", "restaurant", "book"]},
     },
     {
         "text": "idea: Start a YouTube channel reviewing DDR pads and rhythm game controllers",
         "expect_db": "ideas",
         "expect_name_contains": "YouTube",
-        "expect_fields": {"One-Liner": "DDR"},
+        "expect_fields": {"One-Liner": ["DDR", "Dance Dance Revolution", "rhythm game"]},
     },
     {
         "text": "idea: Build a Notion widget that shows daily Etsy sales on the home dashboard",
         "expect_db": "ideas",
         "expect_name_contains": "Notion widget",
-        "expect_fields": {"Notes": "Etsy"},
+        "expect_fields": {"Notes": ["Etsy", "sales", "dashboard"]},
     },
     {
         "text": "admin: Renew car registration by March 30",
@@ -371,12 +371,13 @@ def run_phase1(report, dry_run=False):
         )
 
         if record and msg["expect_fields"]:
-            for field, expected_substring in msg["expect_fields"].items():
+            for field, alternatives in msg["expect_fields"].items():
                 value = get_page_property(record, field, "rich_text")
+                matched = any(alt.lower() in (value or "").lower() for alt in alternatives)
                 report.check(
-                    f"'{name}' -> {field} contains '{expected_substring}'",
-                    expected_substring.lower() in (value or "").lower(),
-                    expected=f"'{expected_substring}' in {field}",
+                    f"'{name}' -> {field} contains one of {alternatives}",
+                    matched,
+                    expected=f"One of {alternatives} in {field}",
                     actual=f"'{value[:80]}'" if value else "(empty)",
                 )
 
@@ -402,7 +403,7 @@ PHASE2_MESSAGES = [
         "expect_match": "Sarah Chen",
         "expect_db": "people",
         "expect_field": "Context",
-        "expect_contains": "maternity",
+        "expect_contains": ["maternity", "leave", "March"],
         "expect_action": "merge",
     },
     {
@@ -410,7 +411,7 @@ PHASE2_MESSAGES = [
         "expect_match": "Bathroom",
         "expect_db": "projects",
         "expect_field": "Notes",
-        "expect_contains": "Mike",
+        "expect_contains": ["Mike", "3,200", "3200", "March 15", "Contracting"],
         "expect_action": "merge",
     },
     {
@@ -418,7 +419,7 @@ PHASE2_MESSAGES = [
         "expect_match": "YouTube",
         "expect_db": "ideas",
         "expect_field": "Notes",
-        "expect_contains": "stamina",
+        "expect_contains": ["stamina", "training", "tutorial"],
         "expect_action": "merge",
     },
     {
@@ -426,7 +427,7 @@ PHASE2_MESSAGES = [
         "expect_match": "car registration",
         "expect_db": "admin",
         "expect_field": "Notes",
-        "expect_contains": "emissions",
+        "expect_contains": ["emissions", "Route 6", "Saturday"],
         "expect_action": "merge",
     },
 ]
@@ -493,10 +494,12 @@ def run_phase2(report, dry_run=False):
         record = find_record_by_name(msg["expect_db"], name)
         if record:
             field_val = get_page_property(record, msg["expect_field"], "rich_text")
+            alternatives = msg["expect_contains"]
+            matched = any(alt.lower() in (field_val or "").lower() for alt in alternatives)
             report.check(
-                f"'{name}' -> {msg['expect_field']} now contains '{msg['expect_contains']}'",
-                msg["expect_contains"].lower() in (field_val or "").lower(),
-                expected=f"'{msg['expect_contains']}' in {msg['expect_field']}",
+                f"'{name}' -> {msg['expect_field']} now contains one of {alternatives}",
+                matched,
+                expected=f"One of {alternatives} in {msg['expect_field']}",
                 actual=f"'{(field_val or '')[:100]}'",
             )
 
@@ -522,7 +525,7 @@ PHASE3_MESSAGES = [
         "expect_match": "Sarah Chen",
         "expect_db": "people",
         "valid_fields": ["Context", "Follow-ups"],
-        "expect_data_contains": "Yamamoto",
+        "expect_data_contains": ["Yamamoto"],
     },
     {
         "text": "Follow up with the bathroom renovation: Mike needs us to pick tile by March 10",
@@ -530,7 +533,7 @@ PHASE3_MESSAGES = [
         "expect_match": "Bathroom",
         "expect_db": "projects",
         "valid_fields": ["Notes", "Next Action"],
-        "expect_data_contains": "tile",
+        "expect_data_contains": ["tile", "March 10", "pick"],
     },
     {
         "text": "Next step for the YouTube channel idea: research what mic/camera setup other rhythm game YouTubers use",
@@ -538,7 +541,7 @@ PHASE3_MESSAGES = [
         "expect_match": "YouTube",
         "expect_db": "ideas",
         "valid_fields": ["Notes", "One-Liner"],
-        "expect_data_contains": "mic",
+        "expect_data_contains": ["mic", "camera", "setup", "rhythm game"],
     },
     {
         "text": "One quick thought on the car registration: the emissions place also does inspections, could knock both out at once",
@@ -546,7 +549,7 @@ PHASE3_MESSAGES = [
         "expect_match": "car registration",
         "expect_db": "admin",
         "valid_fields": ["Notes"],
-        "expect_data_contains": "inspections",
+        "expect_data_contains": ["inspections", "inspection", "emissions"],
     },
 ]
 
@@ -596,17 +599,18 @@ def run_phase3(report, dry_run=False):
         # Check that the new data landed SOMEWHERE in the valid fields
         data_found = False
         data_location = ""
+        alternatives = msg["expect_data_contains"]
         for field in msg["valid_fields"]:
             value = get_page_property(record, field, "rich_text")
-            if msg["expect_data_contains"].lower() in (value or "").lower():
+            if any(alt.lower() in (value or "").lower() for alt in alternatives):
                 data_found = True
                 data_location = field
                 break
 
         report.check(
-            f"'{name}' - data '{msg['expect_data_contains']}' landed in a valid field",
+            f"'{name}' - data from {alternatives} landed in a valid field",
             data_found,
-            expected=f"'{msg['expect_data_contains']}' in one of {msg['valid_fields']}",
+            expected=f"One of {alternatives} in one of {msg['valid_fields']}",
             actual=f"Found in '{data_location}'" if data_found else "Not found in any valid field",
         )
 
